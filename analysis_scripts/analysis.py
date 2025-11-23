@@ -3,97 +3,88 @@ import json
 import librosa
 import numpy as np
 import os
+import warnings
 
 # Configuration
 # Set the time interval for analysis in seconds
-# Sample every 0.1 seconds for a detailed analysis of pitch contours
 ANALYSIS_INTERVAL = 0.1
 
-def analyze_audio_file(audio_path):
-    """
-    Loads on audio file and performs a dominant frequency analysis.
+def analyze_audio(audio_path, original_filename):
+    warnings.filterwarnings('ignore', category=FutureWarning)
     
-    Args:
-        audio_path (str): The full path to the audio file.
-
-    Returns:
-        dict: A dictionary containing the analysis results.
-    """
     try:
-        # 1. Load the audio file
-        # sr=None preserves the original sample rate, which is a good practice for analysis.
+        # Load the audio file
+        # sr=None tells librosa to use the file's native sample rate
         y, sr = librosa.load(audio_path, sr=None)
-
-        # 2. Calculate basis metadata
+        
+        # Calculate the duration in seconds
         duration = librosa.get_duration(y=y, sr=sr)
+        
+        # Calculate the fundamental frequency (pitch contour)
+        # Using PYIN for robust pitch tracking
+        f0, voiced_flag, voiced_probs = librosa.pyin(
+            y, 
+            fmin=librosa.note_to_hz('C2'), 
+            fmax=librosa.note_to_hz('C6'), 
+            sr=sr,
+            frame_length=2048 # Increased frame length for better pitch resolution
+        )
 
-        # 3. Frequency Analysis (Simplified Pitch for Tracking for MVP)
-        # piptrack detects pitches and their magnitudes per short-time frame.
-        pitches, magnitudes = librosa.core.piptrack(y=y, sr=sr)
-
-        analysis_data = []
-
-        # Determine how many frames (samples) make up the ANALYSIS_INTERVAL
-        # Convert seconds to frames for iteration
-        frames_per_interval = int(librosa.time_to_frames(ANALYSIS_INTERVAL, sr=sr))
-
-        # Iterate over the pitch frames, skipping according to the analysis interval
-        for i in range (0, pitches.shape[1], frames_per_interval):
-            # Find the peak magnitude in the current frame
-            index = magnitudes[:, i].argmax()
-            pitch = pitches[index, i]
-
-            # Convert from index back to time in seconds
-            time_s = librosa.frames_to_time(i, sr=sr)
-
-            #Only record frequencies greater than a certain threshold to avoid noise (50 Hz)
-            if pitch > 50:
-                analysis_data.append({
+        # Identify the time stamps corresponding to the f0 estimates
+        times = librosa.times_like(f0)
+        
+        patterns = []
+        analysis_count = 0
+        
+        # Only saving data points where a pitch was confidently detected (voiced_flag is True)
+        for i, time_s in enumerate(times):
+            if voiced_flag[i]:
+                # Find the dominant frequency (pitch) at this time stamp
+                dominant_hz = f0[i]
+                
+                patterns.append({
                     "time_s": round(float(time_s), 2),
-                    "dominant_hz": round(float(pitch), 2)
+                    "dominant_hz": round(float(dominant_hz), 2)
                 })
-
-        # 4. Final Results Dictionary
-        results = {
-            "suscess": True,
-            "filename": os.path.basename(audio_path),
-            "duration": round(duration,2),
-            "analysis_count": len(analysis_data),
-            "patterns": analysis_data
+                analysis_count += 1
+        
+        # Prepare the final JSON output
+        result = {
+            "success": True,
+            "filename": original_filename,
+            "duration": round(float(duration), 2),
+            "analysis_count": analysis_count,
+            "patterns": patterns
         }
+        
+        return json.dumps(result, indent=None)
 
-        return results
-    
     except Exception as e:
-        #If any step fails( file not found, unsupported format, etc)
-        # return an error message.
-        return {
+        # Catch any other runtime error (e.g., file not found, bad format)
+        error_result = {
             "success": False,
             "error": f"Analysis failed: {str(e)}",
-            "filename": os.path.basename(audio_path) if audio_path else "Unknown"
+            "filename": original_filename
         }
-    
-# Main execution
+        return json.dumps(error_result, indent=None)
+
+
 if __name__ == "__main__":
-    # First argument (sys.argv[0]) is the script name itself.
-    #Except the file path to be the second argument(sys.argv[1])
-    audio_file_path = None
-
     if len(sys.argv) < 2:
-          error_msg = {"success": False, "error": "Missing audio file path argument."}
-          print(json.dumps(error_msg), file=sys.stderr)
-          sys.exit(1)
-
-    audio_file_path = sys.argv[1]
-
-     # Run the analysis
-    final_result = analyze_audio_file(audio_file_path)
-
-    # Print the result as a single line of JSON to STDOUT
-    print(json.dumps(final_result))
-    
-    # Exit with code 0 if successful, or 1 if there was a fatal error
-    if not final_result.get("success", True):
+        print(json.dumps({"success": False, "error": "No audio file path provided."}))
         sys.exit(1)
-    else:
-        sys.exit(0)
+        
+    audio_file_path = sys.argv[1]
+    
+    # Extract the original filename from the full path for the output
+    original_filename = os.path.basename(audio_file_path)
+
+    # The file path passed to Python is the full temporary path from Multer
+    output_json = analyze_audio(audio_file_path, original_filename)
+    
+    # Print the result to STDOUT so Node.js can capture it
+    print(output_json)
+    
+    # Note: Do NOT exit with a non-zero code here if you've already printed a success:false JSON, 
+    # as the Node.js controller will handle the JSON error internally.
+    # The 'close' event is enough to stop the process.
