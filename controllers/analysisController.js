@@ -3,6 +3,9 @@ const path = require('path');
 const fs = require('fs');
 const analysisModel = require('../models/analysisModel'); 
 
+//Determine the path for the Virtual Environment's Python executable
+const VENV_PYTHON_PATH = path.join(process.cwd(), 'venv', 'Scripts', 'python');
+
 /**
  * Handles file upload, executes the Python analysis script,
  * saves results to the database, and redirects the user.
@@ -19,12 +22,12 @@ async function handleUpload(req, res) {
     // Path to the Python script relative to the project root
     const scriptPath = path.join(__dirname, '..', 'analysis_scripts', 'analysis.py');
 
-    console.log(`Starting analysis for: ${originalName}`);
+    console.log(`Starting analysis for: ${originalName} using interpreter: ${VENV_PYTHON_PATH}`);
     
     // --- EXECUTE PYTHON SCRIPT ---
     // Note: We use 'python' or 'python3' based on what worked in your terminal.
     // Since you used 'python' successfully in PowerShell, we'll start with that.
-    const pythonProcess = spawn('python', [scriptPath, filePath]);
+    const pythonProcess = spawn(VENV_PYTHON_PATH, [scriptPath, filePath]);
 
     let rawData = '';
     let hasError = false;
@@ -45,14 +48,14 @@ async function handleUpload(req, res) {
     pythonProcess.on('close', async (code) => {
         
         // --- CLEANUP ---
-        // Always delete the temporary file after processing, regardless of success.
+        // Delete the temporary file after processing, regardless of success.
         fs.unlink(filePath, (err) => {
             if (err) console.error("Failed to delete temp file:", err);
         });
         
         if (code !== 0 || hasError) {
             console.error(`Analysis script failed with code ${code}. Raw output: ${rawData}`);
-            // Attempt to parse any error JSON that might have been printed to STDOUT/STDERR
+            //parse any error JSON that might have been printed to STDOUT/STDERR
             try {
                 const errorResult = JSON.parse(rawData);
                 return res.status(500).render('error', { 
