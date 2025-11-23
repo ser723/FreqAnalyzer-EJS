@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analysis Results: <%= analysis.id %></title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-gray-50 p-6">
+    <div class="max-w-4xl mx-auto bg-white p-8 rounded-xl shadow-2xl">
+        <h1 class="text-3xl font-extrabold text-indigo-700 mb-4">Frequency Analysis Complete!</h1>
+        <p class="text-gray-600 mb-8">Results for **<%= analysis.filename %>** (ID: `<%= analysis.id %>`). Duration: <%= analysis.duration %>s</p>
+
+        <!-- Placeholder for the Chart -->
+        <div class="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-inner">
+            <h2 class="text-xl font-semibold mb-4 text-gray-800">Dominant Frequency Contour</h2>
+            <div style="height: 400px;">
+                <canvas id="frequencyChart"></canvas>
+            </div>
+        </div>
+
+        <h2 class="text-xl font-semibold text-gray-800 mt-8 mb-4">Raw Data Summary</h2>
+        <div class="bg-gray-100 p-4 rounded-lg text-sm font-mono whitespace-pre-wrap">
+            <!-- Displaying a simplified version of the data -->
+            <p><strong>Total Data Points:</strong> <%= analysis.analysis_count %></p>
+            <p><strong>First Data Point:</strong> Time: <%= analysis.patterns[0].time_s %>s, Freq: <%= analysis.patterns[0].dominant_hz %>Hz</p>
+            <p><strong>Last Data Point:</strong> Time: <%= analysis.patterns[analysis.analysis_count - 1].time_s %>s, Freq: <%= analysis.patterns[analysis.analysis_count - 1].dominant_hz %>Hz</p>
+        </div>
+
+        <div class="mt-8 text-center">
+            <a href="/" class="inline-block bg-green-500 text-white py-2 px-6 rounded-lg font-semibold hover:bg-green-600 transition duration-300">Analyze Another File</a>
+        </div>
+    </div>
+    
+    <!-- Chart.js Scripting -->
+    <script>
+        const analysisData = JSON.parse('<%- JSON.stringify(analysis.patterns) %>');
+        const labels = analysisData.map(p => p.time_s);
+        const dataPoints = analysisData.map(p => p.dominant_hz);
+
+        const ctx = document.getElementById('frequencyChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Dominant Frequency (Hz)',
+                    data: dataPoints,
+                    borderColor: 'rgb(79, 70, 229)', // indigo-600
+                    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.3,
+                    fill: 'start', // Fill the area under the line
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time (seconds)',
+                            font: { weight: 'bold' }
+                        },
+                        grid: { display: false }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Frequency (Hz)',
+                            font: { weight: 'bold' }
+                        },
+                        beginAtZero: false,
+                        grid: { color: 'rgba(0, 0, 0, 0.1)' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `Freq: ${context.parsed.y.toFixed(2)} Hz`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
