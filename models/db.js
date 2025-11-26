@@ -5,18 +5,16 @@ const connectionString = process.env.DATABASE_URL;
 // Check if the connection string is set
 if (!connectionString) {
     console.error("FATAL ERROR: DATABASE_URL is not defined in environment variables.");
-    // In a production server, you would exit the process here: process.exit(1);
-    // For development, we'll log an error and try to proceed with a dummy pool (or just throw).
     throw new Error("DATABASE_URL must be set to connect to PostgreSQL.");
 }
 
 const pool = new Pool({
     connectionString: connectionString,
-    // IMPORTANT: For Neon/cloud databases, the connection string typically includes 
-    // ?sslmode=require which handles the secure connection. 
-    // We remove the redundant 'ssl: { rejectUnauthorized: false }' to avoid conflicts.
-    // If the connection still fails, you may need to re-add the ssl object 
-    // to force SSL in some environments.
+    // Re-adding the explicit SSL configuration to resolve the 
+    // "Connection terminated unexpectedly" error caused by TLS handshake issues.
+    ssl: {
+        rejectUnauthorized: false, // Allows connections without a verified CA (common in dev)
+    },
 });
 
 pool.on('connect', () => {
