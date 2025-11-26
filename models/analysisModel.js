@@ -1,88 +1,73 @@
-const { getFirestore, doc, addDoc, collection, getDoc } = require('firebase/firestore');
-const { initializeApp } = require('firebase/app');
-const { getAuth, signInWithCustomToken, signInAnonymously } = require('firebase/auth');
+const { Client } = require('pg');
 
-// Global variables provided by the Canvas environment
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-// Initialize Firebase App
-let app;
-let db;
-let auth;
-let userId = 'anonymous'; // Default user ID until authenticated
-
-if (Object.keys(firebaseConfig).length > 0) {
-    try {
-        app = initializeApp(firebaseConfig);
-        db = getFirestore(app);
-        auth = getAuth(app);
-    } catch (e) {
-        console.error("Firebase initialization failed:", e);
-    }
+// Initialize the PostgreSQL Client using the DATABASE_URL environment variable
+let client;
+if (process.env.DATABASE_URL) {
+    client = new Client({
+        connectionString: process.env.DATABASE_URL,
+        // Neon requires SSL for connection
+        ssl: {
+            rejectUnauthorized: false,
+        },
+    });
+    // Connect to the database
+    client.connect()
+        .then(() => console.log('Successfully connected to Neon PostgreSQL database.'))
+        .catch(err => console.error('Neon connection error:', err));
 } else {
-    console.warn("Firebase config not available. Database operations will be mocked.");
+    console.error("DATABASE_URL environment variable is not set. Cannot connect to Neon.");
 }
 
-/**
- * Ensures Firebase is authenticated and sets the user ID.
- * Must be called before any database operation.
- */
-async function ensureAuth() {
-    if (!auth) return; // Skip if Firebase is not initialized
+// --- Create the Table if it doesn't exist (Runs once on startup) ---
+const createTableQuery = `
+    CREATE TABLE IF NOT EXISTS analyses (
+        id SERIAL PRIMARY KEY,
+        filename VARCHAR(255) NOT NULL,
+        duration FLOAT,
+        analysis_count INTEGER,
+        patterns JSONB,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+`;
 
-    if (auth.currentUser) {
-        userId = auth.currentUser.uid;
-        return;
-    }
-
-    try {
-        if (initialAuthToken) {
-            await signInWithCustomToken(auth, initialAuthToken);
-        } else {
-            // Sign in anonymously if no custom token is provided
-            await signInAnonymously(auth);
-        }
-        userId = auth.currentUser.uid;
-        console.log(`Firebase authenticated. User ID: ${userId}`);
-    } catch (error) {
-        console.error("Firebase authentication failed:", error);
-    }
+if (client) {
+    client.query(createTableQuery)
+        .then(() => console.log("PostgreSQL table 'analyses' ensured."))
+        .catch(err => console.error("Error creating analyses table:", err));
 }
 
 /**
  * Saves a new analysis result to the database.
  * @param {object} analysisResult - The result object from the Python script.
- * @returns {string|null} The ID of the newly created document, or null on failure.
+ * @returns {number|null} The ID of the newly created row, or null on failure.
  */
 async function saveAnalysis(analysisResult) {
-    if (!db) return null; // Prevent execution if DB is not ready
-
-    await ensureAuth();
+    if (!client) return null;
 
     try {
-        // Python output uses the key 'patterns' for the data array.
-        // We ensure we access the correct key from the result object.
         const patternsData = analysisResult.patterns || []; 
         
-        // Firestore path for public data: /artifacts/{appId}/public/data/analyses
-        const analysisCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'analyses');
-
-        const docRef = await addDoc(analysisCollectionRef, {
-            filename: analysisResult.filename,
-            duration: analysisResult.duration,
-            analysis_count: analysisResult.analysis_count,
-            patterns: JSON.stringify(patternsData), 
-            userId: userId,
-            createdAt: new Date()
-        });
+        const query = `
+            INSERT INTO analyses (filename, duration, analysis_count, patterns)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id;
+        `;
         
-        console.log("Analysis successfully saved with ID: ", docRef.id);
-        return docRef.id;
+        const values = [
+            analysisResult.filename,
+            analysisResult.duration,
+            analysisResult.analysis_count,
+            JSON.stringify(patternsData) // Store complex data as JSONB
+        ];
+
+        const res = await client.query(query, values);
+        
+        const newId = res.rows[0].id;
+        console.log("Analysis successfully saved to Neon with ID: ", newId);
+        return newId;
 
     } catch (e) {
-        console.error("Error saving analysis to Firestore:", e);
+        console.error("Error saving analysis to Neon:", e);
         return null;
     }
 }
@@ -93,27 +78,33 @@ async function saveAnalysis(analysisResult) {
  * @returns {object|null} The analysis data, or null if not found.
  */
 async function getAnalysisById(id) {
-    if (!db) return null;
-    await ensureAuth();
+    if (!client) return null;
     
     try {
-        const analysisCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'analyses');
-        const docRef = doc(analysisCollectionRef, id);
-        const docSnap = await getDoc(docRef);
+        const query = `
+            SELECT id, filename, duration, analysis_count, patterns, created_at
+            FROM analyses
+            WHERE id = $1;
+        `;
+        
+        const res = await client.query(query, [id]);
 
-        if (docSnap.exists()) {
-            const data = docSnap.data();
-            // Parse the JSON string back into a JavaScript object/array
-            data.patterns = JSON.parse(data.patterns); 
+        if (res.rows.length > 0) {
+            const data = res.rows[0];
+            // PostgreSQL automatically parses JSONB, so that only object is returned
             return {
-                id: docSnap.id,
-                ...data
+                id: data.id,
+                filename: data.filename,
+                duration: data.duration,
+                analysis_count: data.analysis_count,
+                patterns: data.patterns, // patterns is already an array/object
+                createdAt: data.created_at
             };
         } else {
             return null;
         }
     } catch (e) {
-        console.error("Error fetching analysis from Firestore:", e);
+        console.error("Error fetching analysis from Neon:", e);
         return null;
     }
 }
