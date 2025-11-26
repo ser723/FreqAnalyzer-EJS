@@ -36,10 +36,14 @@ router.get('/', (req, res) => {
 });
 
 // 2. File Upload and Analysis Execution (The Core Route)
-router.post('/analysis', upload.single('audioFile'), analysisController.handleUpload);
+//router.post('/analysis', upload.single('audioFile'), analysisController.handleUpload);
+// Process file upload and analysis (POST /analyze)
+router.post('/analyze', upload.single('audioFile'), analysisController.runAnalysis);
 
 // 3. View Results
-router.get('/analysis/:id', analysisController.getAnalysisResults);
+//router.get('/analysis/:id', analysisController.getAnalysisResults);
+// Retrieve analysis results by ID (GET /analysis/:id)
+router.get('/analysis/:id', analysisController.getAnalysis); 
 
 // Placeholder for a generic error page (required by controller error paths)
 router.get('/error', (req, res) => {
@@ -47,12 +51,7 @@ router.get('/error', (req, res) => {
 
  // Main upload form (GET /)
 router.get('/', analysisController.showUploadForm); 
-
-// Process file upload and analysis (POST /analyze)
-router.post('/analyze', analysisController.runAnalysis);
-
-// Retrieve analysis results by ID (GET /analysis/:id)
-router.get('/analysis/:id', analysisController.getAnalysis);   
+  
 });
 
 module.exports = router;
