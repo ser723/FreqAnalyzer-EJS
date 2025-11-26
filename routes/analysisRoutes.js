@@ -44,6 +44,15 @@ router.get('/analysis/:id', analysisController.getAnalysisResults);
 // Placeholder for a generic error page (required by controller error paths)
 router.get('/error', (req, res) => {
     res.render('error', { message: 'An unexpected error occurred.' });
+
+ // Main upload form (GET /)
+router.get('/', analysisController.showUploadForm); 
+
+// Process file upload and analysis (POST /analyze)
+router.post('/analyze', analysisController.runAnalysis);
+
+// Retrieve analysis results by ID (GET /analysis/:id)
+router.get('/analysis/:id', analysisController.getAnalysis);   
 });
 
 module.exports = router;
