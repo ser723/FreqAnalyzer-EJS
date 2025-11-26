@@ -1,11 +1,9 @@
+const analysisModel = require('../models/analysisModel');
 const { spawn } = require('child_process');
-const path = require('path');
 const fs = require('fs');
-const analysisModel = require('../models/analysisModel'); 
+const path = require('path');
 
 // Determines the path to the VIRTUAL ENVIRONMENT Python ---
-// Use path.join to create the most robust path for Windows/Node.js compatibility.
-// Explicitly targeting 'python.exe' inside the venv/Scripts directory.
 const VENV_PYTHON_PATH = path.join(process.cwd(), 'venv', 'Scripts', 'python.exe');
 
 /**
@@ -146,8 +144,15 @@ async function getAnalysisResults(req, res) {
     }
 }
 
+// Placeholder for the root route (GET /)
+function showUploadForm(req, res) {
+    res.render('index', { message: 'Upload an audio file for frequency analysis.' });
+}
+
 
 module.exports = {
-    handleUpload,
-    getAnalysisResults
+    // Map the function names used in the routes file to the implemented functions
+    showUploadForm: showUploadForm, // Maps GET /
+    runAnalysis: handleUpload,      // Maps POST /analyze
+    getAnalysis: getAnalysisResults // Maps GET /analysis/:id
 };
