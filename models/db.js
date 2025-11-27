@@ -3,6 +3,8 @@ const db = require('./db'); // Imports { query, pool } from models/db.js
 /**
  * Ensures the analysis results table exists in the database.
  * This runs once when the application starts.
+ * NOTE: This function MUST be called explicitly from the main server file 
+ * after all modules are initialized to avoid circular dependency issues.
  */
 async function initializeDatabase() {
     console.log('Initializing PostgreSQL table...');
@@ -27,8 +29,8 @@ async function initializeDatabase() {
     }
 }
 
-// Call initialization once at module load
-initializeDatabase();
+// REMOVED: initializeDatabase();
+// The function is now called externally to prevent the startup error.
 
 
 /**
@@ -112,5 +114,6 @@ async function getAnalysisById(id) {
 
 module.exports = {
     saveAnalysis,
-    getAnalysisById
+    getAnalysisById,
+    initializeDatabase // Exporting the initialization function
 };
