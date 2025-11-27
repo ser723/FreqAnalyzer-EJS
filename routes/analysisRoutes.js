@@ -6,6 +6,7 @@ const multer = require('multer');
 const fs = require('fs');
 
 // --- Multer Configuration ---
+// Define the directory for temporary uploads
 const UPLOADS_DIR = path.join(__dirname, '..', 'analysis_scripts', 'uploads');
 
 // Ensure the upload directory exists
@@ -18,7 +19,7 @@ const storage = multer.diskStorage({
         cb(null, UPLOADS_DIR); 
     },
     filename: (req, file, cb) => {
-        // Create a unique filename to prevent clashes
+        // Create a unique filename using a timestamp + original name
         cb(null, `${Date.now()}-${file.originalname}`);
     }
 });
@@ -30,28 +31,19 @@ const upload = multer({
 
 // --- Routes ---
 
-// 1. Home Page / Upload Form
-router.get('/', (req, res) => {
-    res.render('upload'); 
-});
+// 1. Main Upload Form (GET /)
+router.get('/', analysisController.showUploadForm); 
 
-// 2. File Upload and Analysis Execution (The Core Route)
-//router.post('/analysis', upload.single('audioFile'), analysisController.handleUpload);
-// Process file upload and analysis (POST /analyze)
+// 2. File Upload and Analysis Execution (POST /analyze)
+// Uses multer middleware to handle file upload before calling the controller
 router.post('/analyze', upload.single('audioFile'), analysisController.runAnalysis);
 
-// 3. View Results
-//router.get('/analysis/:id', analysisController.getAnalysisResults);
-// Retrieve analysis results by ID (GET /analysis/:id)
+// 3. Retrieve Analysis Results by ID (GET /analysis/:id)
 router.get('/analysis/:id', analysisController.getAnalysis); 
 
-// Placeholder for a generic error page (required by controller error paths)
+// 4. Generic Error Page
 router.get('/error', (req, res) => {
-    res.render('error', { message: 'An unexpected error occurred.' });
-
- // Main upload form (GET /)
-router.get('/', analysisController.showUploadForm); 
-  
+    res.render('error', { message: 'An unexpected error occurred. Please try again.' });
 });
 
 module.exports = router;
