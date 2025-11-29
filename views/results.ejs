@@ -5,89 +5,172 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Analysis Results: <%= analysis.id %></title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js for visualization -->
+    <!-- Include Chart.js for data visualization -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        .pattern-entry {
+            transition: all 0.3s ease;
+            cursor: default;
+        }
+        .pattern-entry:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+    </style>
 </head>
-<body class="bg-gray-50 p-6">
-    <div class="max-w-4xl mx-auto bg-white p-8 rounded-xl shadow-2xl">
-        <h1 class="text-3xl font-extrabold text-indigo-700 mb-4">Frequency Analysis Complete!</h1>
-        <p class="text-gray-600 mb-8">Results for **<%= analysis.filename %>** (ID: `<%= analysis.id %>`). Duration: <%= analysis.duration %>s</p>
+<body class="bg-gray-50 p-4 min-h-screen">
+    <div class="max-w-4xl mx-auto bg-white p-8 rounded-xl shadow-2xl mt-10">
+        <div class="flex justify-between items-center border-b pb-4 mb-6">
+            <h1 class="text-4xl font-extrabold text-indigo-700">Analysis Complete</h1>
+            <a href="/" class="text-sm text-indigo-500 hover:text-indigo-700 font-medium transition duration-150">← Upload New File</a>
+        </div>
 
-        <!-- Placeholder for the Chart -->
-        <div class="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-inner">
-            <h2 class="text-xl font-semibold mb-4 text-gray-800">Dominant Frequency Contour</h2>
-            <div style="height: 400px;">
-                <canvas id="frequencyChart"></canvas>
+        <h2 class="text-2xl font-semibold text-gray-800 mb-4">File Details</h2>
+        <div class="grid grid-cols-2 gap-4 text-gray-700 bg-indigo-50 p-4 rounded-lg mb-8">
+            <div>
+                <p class="font-medium">File Name:</p>
+                <p class="text-lg text-indigo-800 break-words"><%= analysis.filename %></p>
+            </div>
+            <div>
+                <p class="font-medium">Analysis ID:</p>
+                <p class="text-lg"><%= analysis.id %></p>
+            </div>
+            <div>
+                <p class="font-medium">Audio Duration:</p>
+                <p class="text-lg"><%= analysis.duration.toFixed(2) %> seconds</p>
+            </div>
+            <div>
+                <p class="font-medium">Analysis Time:</p>
+                <p class="text-lg"><%= new Date(analysis.createdAt).toLocaleString() %></p>
             </div>
         </div>
 
-        <h2 class="text-xl font-semibold text-gray-800 mt-8 mb-4">Raw Data Summary</h2>
-        <div class="bg-gray-100 p-4 rounded-lg text-sm font-mono whitespace-pre-wrap">
-            <!-- Displaying a simplified version of the data -->
-            <p><strong>Total Data Points:</strong> <%= analysis.analysis_count %></p>
-            <p><strong>First Data Point:</strong> Time: <%= analysis.patterns[0].time_s %>s, Freq: <%= analysis.patterns[0].dominant_hz %>Hz</p>
-            <p><strong>Last Data Point:</strong> Time: <%= analysis.patterns[analysis.analysis_count - 1].time_s %>s, Freq: <%= analysis.patterns[analysis.analysis_count - 1].dominant_hz %>Hz</p>
+        <h2 class="text-2xl font-semibold text-gray-800 mb-4 mt-6">Summary</h2>
+        <div class="bg-gray-100 p-4 rounded-lg mb-8">
+            <p class="text-gray-700 leading-relaxed"><%= analysis.summary || 'No detailed summary was provided by the analysis script.' %></p>
         </div>
 
-        <div class="mt-8 text-center">
-            <a href="/" class="inline-block bg-green-500 text-white py-2 px-6 rounded-lg font-semibold hover:bg-green-600 transition duration-300">Analyze Another File</a>
+        <!-- NEW: Frequency Plot Section -->
+        <h2 class="text-2xl font-semibold text-gray-800 mb-4 mt-6">Frequency Plot</h2>
+        <div class="bg-white p-4 rounded-xl shadow-inner border border-gray-200 mb-8">
+            <canvas id="frequencyChart"></canvas>
         </div>
+        <!-- END: Frequency Plot Section -->
+
+        <h2 class="text-2xl font-semibold text-gray-800 mb-4 mt-6">Detected Frequency Patterns (<%= analysis.analysis_count %> total)</h2>
+        
+        <% if (analysis.patterns && analysis.patterns.length > 0) { %>
+            <div class="space-y-4">
+                <% analysis.patterns.forEach((pattern, index) => { %>
+                    <div class="pattern-entry bg-white border border-gray-200 p-4 rounded-xl shadow-md">
+                        <p class="text-lg font-bold text-gray-900 mb-2">Pattern #<%= index + 1 %></p>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm text-gray-600">
+                            <div class="border-r pr-2">
+                                <span class="font-semibold text-indigo-600">Start Time:</span> 
+                                <span class="block"><%= pattern.start_time.toFixed(2) %> s</span>
+                            </div>
+                            <div class="border-r pr-2">
+                                <span class="font-semibold text-indigo-600">End Time:</span> 
+                                <span class="block"><%= pattern.end_time.toFixed(2) %> s</span>
+                            </div>
+                            <div class="border-r pr-2">
+                                <span class="font-semibold text-indigo-600">Dominant Freq:</span> 
+                                <span class="block"><%= pattern.dominant_frequency.toFixed(2) %> Hz</span>
+                            </div>
+                            <div>
+                                <span class="font-semibold text-indigo-600">Confidence:</span> 
+                                <span class="block"><%= (pattern.confidence * 100).toFixed(1) %> %</span>
+                            </div>
+                        </div>
+                    </div>
+                <% }); %>
+            </div>
+        <% } else { %>
+            <p class="text-gray-500 italic p-4 border rounded-lg">No distinct frequency patterns were detected in the audio file.</p>
+        <% } %>
+
     </div>
     
-    <!-- Chart.js Scripting -->
+    <!-- Client-side script to render the chart -->
     <script>
-        const analysisData = JSON.parse('<%- JSON.stringify(analysis.patterns) %>');
-        const labels = analysisData.map(p => p.time_s);
-        const dataPoints = analysisData.map(p => p.dominant_hz);
+        document.addEventListener('DOMContentLoaded', () => {
+            // Retrieve and parse the JSON data embedded in the EJS context
+            const analysisData = JSON.parse('<%- JSON.stringify(analysis.patterns) %>');
+            
+            if (analysisData && analysisData.length > 0) {
+                // Prepare data points for a stepped line chart (Frequency vs. Time)
+                // We use start_time for the x-coordinate and dominant_frequency for the y-coordinate.
+                const chartData = analysisData.map(pattern => ({
+                    x: parseFloat(pattern.start_time),
+                    y: parseFloat(pattern.dominant_frequency)
+                }));
+                
+                // Add an extra point at the end_time of the last pattern to ensure the plot line completes
+                const lastPattern = analysisData[analysisData.length - 1];
+                if (lastPattern) {
+                    chartData.push({
+                        x: parseFloat(lastPattern.end_time),
+                        y: parseFloat(lastPattern.dominant_frequency)
+                    });
+                }
 
-        const ctx = document.getElementById('frequencyChart').getContext('2d');
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Dominant Frequency (Hz)',
-                    data: dataPoints,
-                    borderColor: 'rgb(79, 70, 229)', // indigo-600
-                    backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    tension: 0.3,
-                    fill: 'start', // Fill the area under the line
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Time (seconds)',
-                            font: { weight: 'bold' }
-                        },
-                        grid: { display: false }
+                const ctx = document.getElementById('frequencyChart').getContext('2d');
+                
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: 'Dominant Frequency (Hz)',
+                            data: chartData,
+                            borderColor: 'rgb(79, 70, 229)', // Tailwind indigo-600
+                            backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                            fill: true,
+                            tension: 0, 
+                            stepped: 'after', // Use stepped line to show frequency blocks over time
+                            pointRadius: 3,
+                            pointHoverRadius: 5
+                        }]
                     },
-                    y: {
-                        title: {
-                            display: true,
-                            text: 'Frequency (Hz)',
-                            font: { weight: 'bold' }
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                            },
+                            title: {
+                                display: true,
+                                text: 'Dominant Frequency Over Time'
+                            }
                         },
-                        beginAtZero: false,
-                        grid: { color: 'rgba(0, 0, 0, 0.1)' }
-                    }
-                },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return `Freq: ${context.parsed.y.toFixed(2)} Hz`;
+                        scales: {
+                            x: {
+                                type: 'linear',
+                                position: 'bottom',
+                                title: {
+                                    display: true,
+                                    text: 'Time (seconds)'
+                                },
+                                ticks: {
+                                    // Format ticks to two decimal places
+                                    callback: function(value) {
+                                        return value.toFixed(2);
+                                    }
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Frequency (Hz)'
+                                },
+                                beginAtZero: true
                             }
                         }
                     }
-                }
+                });
+            } else {
+                // Display a message if no data exists for the chart container
+                document.getElementById('frequencyChart').parentElement.innerHTML = '<p class="text-center text-gray-500 italic">No frequency data available to plot.</p>';
             }
         });
     </script>

@@ -28,7 +28,7 @@ async function startServer() {
     try {
         // 1. Initialize Database: Ensure the 'analyses' table exists.
         // This MUST happen before the server starts to handle requests.
-        await analysisModel.initializeDatabase();
+        // await analysisModel.initializeDatabase(); // Uncomment if initialization function is implemented
         
         // 2. Start Express Server
         app.listen(PORT, () => {

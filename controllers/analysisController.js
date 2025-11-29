@@ -10,7 +10,7 @@ const VENV_PYTHON_PATH = path.join(process.cwd(), 'venv', 'Scripts', 'python.exe
  * Handles file upload, executes the Python analysis script,
  * saves results to the database, and redirects the user.
  */
-async function handleUpload(req, res) {
+async function handleUpload(req, res) { 
     if (!req.file) {
         return res.status(400).render('error', { message: 'No file uploaded.' });
     }
