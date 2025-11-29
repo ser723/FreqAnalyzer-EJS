@@ -1,55 +1,50 @@
-const { Client } = require('pg');
+const db = require('./db'); // Imports { query } and { pool } from models/db.js
 
-// Initialize the PostgreSQL Client using the DATABASE_URL environment variable
-let client;
-if (process.env.DATABASE_URL) {
-    client = new Client({
-        connectionString: process.env.DATABASE_URL,
-        // Neon requires SSL for connection
-        ssl: {
-            rejectUnauthorized: false,
-        },
-    });
-    // Connect to the database
-    client.connect()
-        .then(() => console.log('Successfully connected to Neon PostgreSQL database.'))
-        .catch(err => console.error('Neon connection error:', err));
-} else {
-    console.error("DATABASE_URL environment variable is not set. Cannot connect to Neon.");
-}
-
-// --- Create the Table if it doesn't exist (Runs once on startup) ---
-const createTableQuery = `
-    CREATE TABLE IF NOT EXISTS analyses (
-        id SERIAL PRIMARY KEY,
-        filename VARCHAR(255) NOT NULL,
-        duration FLOAT,
-        analysis_count INTEGER,
-        patterns JSONB,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    );
-`;
-
-if (client) {
-    client.query(createTableQuery)
-        .then(() => console.log("PostgreSQL table 'analyses' ensured."))
-        .catch(err => console.error("Error creating analyses table:", err));
+/**
+ * Ensures the analysis results table exists in the database.
+ * This function is called from server.js upon startup.
+ */
+async function initializeDatabase() {
+    console.log('Initializing PostgreSQL table...');
+    const createTableQuery = `
+        CREATE TABLE IF NOT EXISTS analyses (
+            id SERIAL PRIMARY KEY,
+            filename VARCHAR(255) NOT NULL,
+            duration NUMERIC(10, 2),
+            analysis_count INTEGER,
+            patterns JSONB NOT NULL,
+            summary TEXT, 
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+    `;
+    try {
+        // Use the pool's query method for table creation
+        await db.query(createTableQuery); 
+        console.log("PostgreSQL table 'analyses' ensured.");
+    } catch (e) {
+        // If this fails, the app should exit.
+        console.error('FATAL ERROR: Could not ensure analyses table exists:', e);
+        // Important: Stop the server process if database structure setup fails
+        process.exit(1); 
+    }
 }
 
 /**
  * Saves a new analysis result to the database.
  * @param {object} analysisResult - The result object from the Python script.
- * @returns {number|null} The ID of the newly created row, or null on failure.
+ * @returns {Promise<number|null>} The ID of the newly created row, or null on failure.
  */
 async function saveAnalysis(analysisResult) {
-    if (!client) return null;
-
+    // Check for a valid result object
+    if (!analysisResult) return null;
+    
     try {
         const patternsData = analysisResult.patterns || []; 
+        const summaryText = analysisResult.summary || 'No summary provided.';
         
-        const query = `
-            INSERT INTO analyses (filename, duration, analysis_count, patterns)
-            VALUES ($1, $2, $3, $4)
+        const queryText = `
+            INSERT INTO analyses (filename, duration, analysis_count, patterns, summary)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING id;
         `;
         
@@ -57,10 +52,13 @@ async function saveAnalysis(analysisResult) {
             analysisResult.filename,
             analysisResult.duration,
             analysisResult.analysis_count,
-            JSON.stringify(patternsData) // Store complex data as JSONB
+            // JSON.stringify is mandatory when saving complex JS objects to a JSONB column
+            JSON.stringify(patternsData), 
+            summaryText 
         ];
 
-        const res = await client.query(query, values);
+        // Use the pool's query method (db.query)
+        const res = await db.query(queryText, values);
         
         const newId = res.rows[0].id;
         console.log("Analysis successfully saved to Neon with ID: ", newId);
@@ -74,30 +72,30 @@ async function saveAnalysis(analysisResult) {
 
 /**
  * Retrieves an analysis result by ID.
- * @param {string} id - The document ID.
- * @returns {object|null} The analysis data, or null if not found.
+ * @param {string} id - The database ID (SERIAL primary key) of the analysis.
+ * @returns {Promise<object|null>} The analysis data, or null if not found.
  */
 async function getAnalysisById(id) {
-    if (!client) return null;
-    
     try {
-        const query = `
-            SELECT id, filename, duration, analysis_count, patterns, created_at
+        const queryText = `
+            SELECT id, filename, duration, analysis_count, patterns, summary, created_at
             FROM analyses
             WHERE id = $1;
         `;
         
-        const res = await client.query(query, [id]);
+        // Use the pool's query method (db.query)
+        const res = await db.query(queryText, [id]);
 
         if (res.rows.length > 0) {
             const data = res.rows[0];
-            // PostgreSQL automatically parses JSONB, so that only object is returned
+            // PostgreSQL automatically converts JSONB back into a JS object/array
             return {
                 id: data.id,
                 filename: data.filename,
                 duration: data.duration,
                 analysis_count: data.analysis_count,
-                patterns: data.patterns, // patterns is already an array/object
+                patterns: data.patterns, 
+                summary: data.summary,
                 createdAt: data.created_at
             };
         } else {
@@ -111,5 +109,6 @@ async function getAnalysisById(id) {
 
 module.exports = {
     saveAnalysis,
-    getAnalysisById
+    getAnalysisById,
+    initializeDatabase
 };
