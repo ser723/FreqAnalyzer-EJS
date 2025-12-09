@@ -1,4 +1,4 @@
-const db = require('./db'); // Imports { query } and { pool } from models/db.js
+const db = require('./db'); // Ensure this points to your PostgreSQL client setup file
 
 /**
  * Ensures the analysis results table exists in the database.
@@ -18,29 +18,25 @@ async function initializeDatabase() {
         );
     `;
     try {
-        // Use the pool's query method for table creation
         await db.query(createTableQuery); 
         console.log("PostgreSQL table 'analyses' ensured.");
     } catch (e) {
-        // If this fails, the app should exit.
         console.error('FATAL ERROR: Could not ensure analyses table exists:', e);
-        // Important: Stop the server process if database structure setup fails
-        process.exit(1); 
+        throw e; 
     }
 }
 
 /**
- * Saves a new analysis result to the database.
+ * Saves a new analysis result to the database (CREATE).
  * @param {object} analysisResult - The result object from the Python script.
  * @returns {Promise<number|null>} The ID of the newly created row, or null on failure.
  */
 async function saveAnalysis(analysisResult) {
-    // Check for a valid result object
     if (!analysisResult) return null;
     
     try {
         const patternsData = analysisResult.patterns || []; 
-        const summaryText = analysisResult.summary || 'No summary provided.';
+        const summaryText = analysisResult.summary || 'Analysis complete. Review the data for patterns.';
         
         const queryText = `
             INSERT INTO analyses (filename, duration, analysis_count, patterns, summary)
@@ -52,26 +48,24 @@ async function saveAnalysis(analysisResult) {
             analysisResult.filename,
             analysisResult.duration,
             analysisResult.analysis_count,
-            // JSON.stringify is mandatory when saving complex JS objects to a JSONB column
+            // JSONB requires the data to be stringified
             JSON.stringify(patternsData), 
             summaryText 
         ];
 
-        // Use the pool's query method (db.query)
         const res = await db.query(queryText, values);
-        
-        const newId = res.rows[0].id;
-        console.log("Analysis successfully saved to Neon with ID: ", newId);
-        return newId;
+        console.log(`Analysis successfully saved with ID: ${res.rows[0].id}`);
+        return res.rows[0].id;
 
     } catch (e) {
-        console.error("Error saving analysis to Neon:", e);
-        return null;
+        console.error("Critical Error saving analysis to Neon:", e);
+        // Throw the error so the controller can catch it and display a proper failure message
+        throw e;
     }
 }
 
 /**
- * Retrieves an analysis result by ID.
+ * Retrieves an analysis result by ID (READ).
  * @param {string} id - The database ID (SERIAL primary key) of the analysis.
  * @returns {Promise<object|null>} The analysis data, or null if not found.
  */
@@ -83,12 +77,10 @@ async function getAnalysisById(id) {
             WHERE id = $1;
         `;
         
-        // Use the pool's query method (db.query)
         const res = await db.query(queryText, [id]);
 
         if (res.rows.length > 0) {
             const data = res.rows[0];
-            // PostgreSQL automatically converts JSONB back into a JS object/array
             return {
                 id: data.id,
                 filename: data.filename,
@@ -108,7 +100,7 @@ async function getAnalysisById(id) {
 }
 
 /**
- * Update an existing analysis by ID.
+ * Updates an analysis result's summary (UPDATE).
  * @param {number} id - The ID of the analysis to update.
  * @param {string} newSummary - The new summary text.
  * @returns {Promise<boolean>} True if successful, false otherwise.
@@ -132,7 +124,7 @@ async function updateAnalysisSummary(id, newSummary) {
 }
 
 /**
- * Deletes an analysis result by ID.
+ * Deletes an analysis result by ID (DELETE).
  * @param {number} id - The ID of the analysis to delete.
  * @returns {Promise<boolean>} True if successful, false otherwise.
  */
@@ -153,10 +145,12 @@ async function deleteAnalysis(id) {
     }
 }
 
+
+// Export all model functions
 module.exports = {
     saveAnalysis,
     getAnalysisById,
     updateAnalysisSummary,
     deleteAnalysis,
-    initializeDatabase
+    initializeDatabase 
 };
