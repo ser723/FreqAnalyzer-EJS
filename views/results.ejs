@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        /* Custom styles for better aesthetics */
+        .card {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+        .weather-icon {
+            width: 50px; 
+            height: 50px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans p-6">
+
+    <div class="max-w-4xl mx-auto">
+        
+        <header class="text-center py-6 bg-white card rounded-lg mb-6">
+            <h1 class="text-3xl font-extrabold text-indigo-700">Frequency Analysis Complete!</h1>
+            <p class="text-gray-500 mt-2">Results for **<%= analysis.filename %>** (ID: <%= analysis.id %>). Duration: <%= analysis.duration %>s</p>
+        </header>
+
+        <!-- Weather Information Card (NEW SECTION) -->
+        <div class="bg-white p-6 card rounded-lg mb-6 border-l-4 border-blue-500">
+            <h2 class="text-xl font-semibold text-blue-700 mb-4">Current Context: <%= weather.city %> Weather</h2>
+            <% if (weather.error) { %>
+                <p class="text-red-500">Error fetching weather: <%= weather.error %></p>
+            <% } else { %>
+                <div class="flex items-center space-x-4">
+                    <!-- Icon from OpenWeatherMap -->
+                    <img class="weather-icon" src="https://openweathermap.org/img/wn/<%= weather.icon %>@2x.png" alt="Weather Icon">
+                    <div>
+                        <p class="text-4xl font-bold text-gray-800"><%= Math.round(weather.temperature) %>°F</p>
+                        <p class="text-lg text-gray-600 capitalize"><%= weather.description %></p>
+                        <p class="text-sm text-gray-400"><%= weather.city %>, <%= weather.country %></p>
+                    </div>
+                </div>
+            <% } %>
+        </div>
+
+        <!-- Dominant Frequency Chart -->
+        <div class="bg-white p-6 card rounded-lg mb-6">
+            <h2 class="text-xl font-semibold text-indigo-700 mb-4">Dominant Frequency Contour</h2>
+            <canvas id="frequencyChart"></canvas>
+        </div>
+
+        <!-- Analysis Summary Card -->
+        <div class="bg-white p-6 card rounded-lg mb-6">
+            <h2 class="text-xl font-semibold text-indigo-700 mb-4">Analysis Summary</h2>
+            <p class="text-gray-700 mb-4"><%= analysis.summary %></p>
+            
+            <h3 class="text-lg font-medium text-gray-600 mb-2 mt-6">Raw Data Summary</h3>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+                <p><strong>Total Data Points:</strong> <%= analysis.patterns.length %></p>
+                <p><strong>First Data Point:</strong> Time: <%= analysis.patterns[0].time %>s, Freq: <%= analysis.patterns[0].freq %>Hz</p>
+                <% if (analysis.patterns.length > 1) { %>
+                    <p><strong>Last Data Point:</strong> Time: <%= analysis.patterns[analysis.patterns.length - 1].time %>s, Freq: <%= analysis.patterns[analysis.patterns.length - 1].freq %>Hz</p>
+                <% } %>
+            </div>
+        </div>
+
+        <!-- Action Button -->
+        <div class="text-center pt-4">
+            <a href="/" class="inline-block bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition duration-150 shadow-lg">
+                Analyze Another File
+            </a>
+        </div>
+        
+    </div>
+
+    <script>
+        // Get the data passed from the server
+        // EJS template variable injection below
+        const analysisData = <%- JSON.stringify(analysis) %>;
+        const patterns = analysisData.patterns;
+
+        // Extract time and frequency data for Chart.js
+        const times = patterns.map(p => p.time.toFixed(2));
+        const frequencies = patterns.map(p => p.freq);
+
+        const ctx = document.getElementById('frequencyChart').getContext('2d');
+        
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: times,
+                datasets: [{
+                    label: 'Frequency (Hz)',
+                    data: frequencies,
+                    borderColor: 'rgb(79, 70, 229)', // Indigo-600
+                    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.1,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time (seconds)',
+                            font: { weight: 'bold' }
+                        },
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45,
+                            autoSkip: true,
+                            maxTicksLimit: 15
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Frequency (Hz)',
+                            font: { weight: 'bold' }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                }
+            }
+        });
+    </script>
+
+</body>
+</html>
