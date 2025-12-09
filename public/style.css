@@ -1,8 +1,0 @@
-/* Base Stylesheet for FreqAnalyzer
-  Since Tailwind CSS is loaded via a script tag in the EJS, 
-  this file is mainly for custom components or to resolve the 
-  "Refused to apply style" console error.
-*/
-body {
-    font-family: 'Inter', sans-serif;
-}
