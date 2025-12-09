@@ -1,158 +1,192 @@
-const analysisModel = require('../models/analysisModel');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const analysisModel = require('../models/analysisModel'); // Import all model functions
 
-// Determines the path to the VIRTUAL ENVIRONMENT Python ---
-const VENV_PYTHON_PATH = path.join(process.cwd(), 'venv', 'Scripts', 'python.exe');
+// --- Configuration ---
+const PYTHON_SCRIPT_PATH = path.join(__dirname, '..', 'analysis_scripts', 'analysis.py');
+const UPLOADS_DIR = path.join(__dirname, '..', 'analysis_scripts', 'uploads');
+const PYTHON_EXECUTABLE = path.join(__dirname, '..', 'venv', 'Scripts', 'python.exe'); // Path to venv Python
 
 /**
- * Handles file upload, executes the Python analysis script,
- * saves results to the database, and redirects the user.
+ * Renders the main upload form. (GET /)
  */
-async function handleUpload(req, res) { 
+exports.showUploadForm = (req, res) => {
+    res.render('index', { title: 'Audio Frequency Analyzer' });
+};
+
+
+/**
+ * Runs the Python analysis script and saves the result to the DB. (POST /analyze)
+ * This is the CREATE operation.
+ */
+exports.runAnalysis = (req, res) => {
+    // 1. Check if a file was actually uploaded
     if (!req.file) {
-        return res.status(400).render('error', { message: 'No file uploaded.' });
+        return res.status(400).render('error', { message: 'No audio file uploaded.' });
     }
-    
-    const filePath = req.file.path;
-    const originalName = req.file.originalname;
-    
-    // Path to the Python script relative to the project root
-    const scriptPath = path.join(__dirname, '..', 'analysis_scripts', 'analysis.py');
 
-    //Check for Python Executable
-    if (!fs.existsSync(VENV_PYTHON_PATH)) {
-        const errorMsg = `Critical Error: Python executable not found at ${VENV_PYTHON_PATH}. Please ensure your virtual environment is created and activated (venv\\Scripts\\activate) and the path is correct.`;
-        console.error(errorMsg);
-        // Clean up the uploaded file before exiting
-        fs.unlink(filePath, (err) => { if (err) console.error("Failed to delete temp file during error:", err); });
-        return res.status(500).render('error', { 
-            message: errorMsg 
-        });
-    }
-    
-    console.log(`Starting analysis for: ${originalName} using interpreter: ${VENV_PYTHON_PATH}`);
-    
-    // EXECUTE PYTHON SCRIPT USING VENV PATH 
-    //Using explicit .exe suffix and the fully constructed path.
-    const pythonProcess = spawn(VENV_PYTHON_PATH, [scriptPath, filePath]);
+    const audioPath = req.file.path;
+    const originalFilename = req.file.originalname;
 
-    let rawData = '';
-    let hasError = false;
+    console.log(`Starting analysis for: ${originalFilename} using interpreter: ${PYTHON_EXECUTABLE}`);
 
-    // 1. Capture JSON output from Python's STDOUT
+    // 2. Spawn the Python process
+    const pythonProcess = spawn(PYTHON_EXECUTABLE, [PYTHON_SCRIPT_PATH, audioPath]);
+    let pythonOutput = '';
+    let pythonError = '';
+
+    // Capture stdout (the JSON result)
     pythonProcess.stdout.on('data', (data) => {
-        rawData += data.toString();
+        pythonOutput += data.toString();
     });
 
-    // 2. Capture error messages from Python's STDERR
+    // Capture stderr (any Python errors or warnings)
     pythonProcess.stderr.on('data', (data) => {
-        const errorText = data.toString();
-        console.error(`Python STDERR: ${errorText}`);
-        
-        // If librosa/numpy import fails, that's the real error
-        if (errorText.includes('No module named') || errorText.includes('ImportError')) {
-             console.error("CRITICAL PYTHON ERROR: librosa/numpy failed to import. VENV is not being used correctly.");
-        }
-
-        // Set error flag
-        hasError = true; 
+        pythonError += data.toString();
     });
 
-    // 3. Process the results when the Python script finishes
+    // 3. Handle process close/exit
     pythonProcess.on('close', async (code) => {
-        
-        // --- CLEANUP ---
-        fs.unlink(filePath, (err) => {
-            if (err) console.error("Failed to delete temp file:", err);
+        // Always attempt to delete the temporary file after processing
+        fs.unlink(audioPath, (err) => {
+            if (err) console.error('Error deleting temp file:', err);
+            else console.log(`Deleted temp file: ${audioPath}`);
         });
         
-        // Check for non-zero exit code OR an error flag from STDERR
-        if (code !== 0 || hasError) {
-            console.error(`Analysis script failed with code ${code}. Raw output: ${rawData}`);
-            
-            // Log the full command used for debugging purposes
-            console.error(`Full command executed: ${VENV_PYTHON_PATH} ${scriptPath} ${filePath}`);
-            
-            //Parse any error JSON that might have been printed to STDOUT/STDERR
-            try {
-                const errorResult = JSON.parse(rawData);
-                return res.status(500).render('error', { 
-                    message: `Analysis failed: ${errorResult.error || 'Check server logs.'}` 
-                });
-            } catch {
-                return res.status(500).render('error', { 
-                    message: `Analysis script failed. Code: ${code}. Check server console for Python errors.` 
-                });
-            }
+        // Check for Python script execution failure
+        if (code !== 0) {
+            console.error(`Python script failed with code ${code}. Error: ${pythonError}`);
+            return res.status(500).render('error', { 
+                message: 'Analysis script failed.', 
+                details: `Error Code: ${code}. Output: ${pythonError.substring(0, 300)}...` 
+            });
         }
         
-        // SUCCESS PATH
+        // 4. Process the JSON output
         try {
-            const analysisResult = JSON.parse(rawData);
-            
-            if (!analysisResult.success) {
+            const result = JSON.parse(pythonOutput);
+
+            // Check if the Python script explicitly reported a failure (e.g., file not supported)
+            if (result.success === false) {
                  return res.status(500).render('error', { 
-                    message: `Analysis reported error: ${analysisResult.error}` 
+                    message: 'Analysis failed internally.', 
+                    details: `Python reported: ${result.error || 'Unknown error'}` 
                 });
             }
 
-            // 4. Save to Database
-            const newAnalysisId = await analysisModel.saveAnalysis(analysisResult);
-            
-            if (newAnalysisId) {
-                // 5. Redirect to the results page
-                res.redirect(`/analysis/${newAnalysisId}`);
+            // 5. Save the result to the PostgreSQL database
+            const newId = await analysisModel.saveAnalysis({
+                ...result,
+                filename: originalFilename // Use original name for storage
+            });
+
+            if (newId) {
+                // Success: Redirect to the results page
+                res.redirect(`/analysis/${newId}`);
             } else {
-                res.status(500).render('error', { 
+                // Database save failed
+                return res.status(500).render('error', { 
                     message: 'Analysis succeeded, but database save failed.' 
                 });
             }
 
         } catch (e) {
-            console.error("Critical Node.js Processing Error (JSON parsing or redirect):", e);
-            res.status(500).render('error', { 
-                message: 'Internal server error processing analysis results.' 
+            console.error('Critical Node.js Processing Error (JSON parsing or redirect):', e);
+            console.error('Raw Python Output:', pythonOutput);
+            return res.status(500).render('error', { 
+                message: 'Internal processing error after analysis.',
+                details: e.message 
             });
         }
     });
-}
+
+    // Handle initial process spawn errors (e.g., Python not found)
+    pythonProcess.on('error', (err) => {
+        console.error('Failed to start Python process:', err);
+        return res.status(500).render('error', { 
+            message: 'Failed to start analysis tool.', 
+            details: `Check Python venv/executable path. Error: ${err.message}` 
+        });
+    });
+};
 
 
 /**
- * Renders the results page by fetching data from the database.
+ * Retrieves and renders a single analysis result. (GET /analysis/:id)
+ * This is the READ operation.
  */
-async function getAnalysisResults(req, res) {
+exports.getAnalysis = async (req, res) => {
+    const analysisId = req.params.id;
+    try {
+        const data = await analysisModel.getAnalysisById(analysisId);
+        
+        if (data) {
+            // Success: Render the results page
+            res.render('results', { analysis: data, title: `Analysis ID: ${analysisId}` });
+        } else {
+            // Not Found
+            res.status(404).render('error', { message: `Analysis ID ${analysisId} not found.` });
+        }
+    } catch (e) {
+        console.error(`Error fetching analysis ${analysisId}:`, e);
+        res.status(500).render('error', { message: "Database query error." });
+    }
+};
+
+
+/**
+ * Updates the summary field of an existing analysis record. (PATCH /analysis/:id)
+ * This is the UPDATE operation.
+ */
+exports.updateAnalysis = async (req, res) => {
+    const analysisId = req.params.id;
+    const { summary } = req.body; // Expects JSON body: { "summary": "..." }
+
+    if (!summary || typeof summary !== 'string') {
+        return res.status(400).json({ success: false, message: "Summary text is required for update." });
+    }
+
+    try {
+        // Call the new model function to update the record
+        const success = await analysisModel.updateAnalysisSummary(analysisId, summary);
+
+        if (success) {
+            // 200 OK with success message
+            res.json({ success: true, message: `Analysis ${analysisId} summary updated.` });
+        } else {
+            // Record not found or update failed
+            res.status(404).json({ success: false, message: `Analysis ${analysisId} not found or update failed.` });
+        }
+    } catch (e) {
+        console.error("Update failed:", e);
+        // Send internal server error
+        res.status(500).json({ success: false, message: "Server error during update." });
+    }
+};
+
+
+/**
+ * Deletes an analysis record from the database. (DELETE /analysis/:id)
+ * This is the DELETE operation.
+ */
+exports.deleteAnalysis = async (req, res) => {
     const analysisId = req.params.id;
     
     try {
-        const analysis = await analysisModel.getAnalysisById(analysisId);
+        // Call the new model function to delete the record
+        const success = await analysisModel.deleteAnalysis(analysisId);
 
-        if (!analysis) {
-            return res.status(404).render('error', { message: `Analysis ID ${analysisId} not found.` });
+        if (success) {
+            // Success: 204 No Content is standard for successful deletion
+            res.status(204).end(); 
+        } else {
+            // Record not found
+            res.status(404).json({ success: false, message: `Analysis ${analysisId} not found.` });
         }
-        
-        // Render the results view, passing the retrieved data
-        res.render('results', { 
-            analysis: analysis 
-        });
-
     } catch (e) {
-        console.error("Error fetching analysis:", e);
-        res.status(500).render('error', { message: 'Error retrieving analysis results.' });
+        console.error("Delete failed:", e);
+        // Send internal server error
+        res.status(500).json({ success: false, message: "Server error during deletion." });
     }
-}
-
-// Placeholder for the root route (GET /)
-function showUploadForm(req, res) {
-    res.render('index', { message: 'Upload an audio file for frequency analysis.' });
-}
-
-
-module.exports = {
-    // Map the function names used in the routes file to the implemented functions
-    showUploadForm: showUploadForm, // Maps GET /
-    runAnalysis: handleUpload,      // Maps POST /analyze
-    getAnalysis: getAnalysisResults // Maps GET /analysis/:id
 };
