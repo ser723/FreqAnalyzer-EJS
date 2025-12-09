@@ -1,5 +1,7 @@
 # FreqAnalyzer-EJS
 
+Deployed Site: https://freqanalyzer-ejs.onrender.com
+
 This project provides a backend server for analyzing audio files for specific sound patterns. It uses a Python script for the heavy lifting (audio analysis) and a Node.js/Express server for API routing, file handling, and database persistence.
 
 The persistence layer uses PostgreSQL (via the pg library), designed to connect with cloud services like Neon.
