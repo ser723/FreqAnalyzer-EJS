@@ -29,21 +29,30 @@ const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 } // 10MB file size limit
 });
 
-// --- Routes ---
+// --- Routes (Full CRUD) ---
 
-// 1. Main Upload Form (GET /)
+// 1. Main Upload Form (GET /) - READ (list/home)
 router.get('/', analysisController.showUploadForm); 
 
-// 2. File Upload and Analysis Execution (POST /analyze)
+// 2. File Upload and Analysis Execution (POST /analyze) - CREATE
 // Uses multer middleware to handle file upload before calling the controller
 router.post('/analyze', upload.single('audioFile'), analysisController.runAnalysis);
 
-// 3. Retrieve Analysis Results by ID (GET /analysis/:id)
+// 3. Retrieve Analysis Results by ID (GET /analysis/:id) - READ (single item)
 router.get('/analysis/:id', analysisController.getAnalysis); 
 
-// 4. Generic Error Page
+// 4. Update Analysis Summary (PATCH /analysis/:id) - UPDATE
+// This route will update a specific field (e.g., the summary/notes) for an analysis record.
+router.patch('/analysis/:id', analysisController.updateAnalysis);
+
+// 5. Delete Analysis Record (DELETE /analysis/:id) - DELETE
+// This route permanently removes an analysis record from the database.
+router.delete('/analysis/:id', analysisController.deleteAnalysis);
+
+// 6. Generic Error Page
 router.get('/error', (req, res) => {
     res.render('error', { message: 'An unexpected error occurred. Please try again.' });
 });
+
 
 module.exports = router;

@@ -107,8 +107,56 @@ async function getAnalysisById(id) {
     }
 }
 
+/**
+ * Update an existing analysis by ID.
+ * @param {number} id - The ID of the analysis to update.
+ * @param {string} newSummary - The new summary text.
+ * @returns {Promise<boolean>} True if successful, false otherwise.
+ */
+async function updateAnalysisSummary(id, newSummary) {
+    try {
+        const queryText = `
+            UPDATE analyses
+            SET summary = $1
+            WHERE id = $2
+            RETURNING id;
+        `;
+        const res = await db.query(queryText, [newSummary, id]);
+        
+        // Check if any row was actually updated
+        return res.rowCount > 0;
+    } catch (e) {
+        console.error("Error updating analysis summary:", e);
+        return false;
+    }
+}
+
+/**
+ * Deletes an analysis result by ID.
+ * @param {number} id - The ID of the analysis to delete.
+ * @returns {Promise<boolean>} True if successful, false otherwise.
+ */
+async function deleteAnalysis(id) {
+    try {
+        const queryText = `
+            DELETE FROM analyses
+            WHERE id = $1
+            RETURNING id;
+        `;
+        const res = await db.query(queryText, [id]);
+        
+        // Check if any row was actually deleted
+        return res.rowCount > 0;
+    } catch (e) {
+        console.error("Error deleting analysis:", e);
+        return false;
+    }
+}
+
 module.exports = {
     saveAnalysis,
     getAnalysisById,
+    updateAnalysisSummary,
+    deleteAnalysis,
     initializeDatabase
 };
