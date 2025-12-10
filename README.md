@@ -1,5 +1,8 @@
 # FreqAnalyzer-EJS
 
+Powerpoint:[CSC 372-01 Term Project.pptx]
+
+
 Deployed Site: https://freqanalyzer-ejs.onrender.com
 
 This project provides a backend server for analyzing audio files for specific sound patterns. It uses a Python script for the heavy lifting (audio analysis) and a Node.js/Express server for API routing, file handling, and database persistence.
